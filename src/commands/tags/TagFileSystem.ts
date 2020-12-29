@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { ResourceManagementClient } from "@azure/arm-resources";
+import { ResourceManagementClient as StackResourceManagementClient } from "@azure/arm-resources-profile-2020-09-01-hybrid";
 import * as jsonc from 'jsonc-parser';
 import * as os from "os";
 import { commands, Diagnostic, FileStat, FileType, MessageItem, Uri, window } from "vscode";
@@ -78,8 +79,18 @@ export class TagFileSystem extends AzExtTreeFileSystem<ResourceGroupTreeItem | R
                 delete tags[insertKeyHere];
             }
 
-            const client: ResourceManagementClient = await createResourceClient(node.root);
-            await client.tags.updateAtScope(node.id, { properties: { tags }, operation: 'Replace' });
+            let client: StackResourceManagementClient | ResourceManagementClient;
+            if (node.root.environment.name === 'AzurePPE') {
+                client = <StackResourceManagementClient><unknown>(await createResourceClient(node.root));
+                let nodeLocation: string = 'local';
+                if (node.data.location !== undefined && node.data.location !== '') {
+                    nodeLocation = node.data.location;
+                }
+                await client.tags.azureStackUpdateAtScope(node.id, { location: nodeLocation, tags: tags });
+            } else {
+                client = await createResourceClient(node.root);
+                await client.tags.updateAtScope(node.id, { properties: { tags }, operation: 'Replace' });
+            }
 
             const updatedMessage: string = isResourceGroup ?
                 localize('updatedTagsGroup', 'Successfully updated tags for resource group "{0}".', node.name) :
